@@ -1,4 +1,4 @@
 package com.lmk.rpc.client.route;
 
-public class RpcLoadBalanceRoundRobin {
+public class RpcLoadBalanceRoundRobin extends RpcLoadBalance{
 }

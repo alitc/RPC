@@ -3,12 +3,16 @@ package com.netty.rpc.util;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import sun.security.krb5.internal.crypto.Des;
 
+import java.io.IOException;
 import java.text.SimpleDateFormat;
+import java.util.HashMap;
 
 public class JsonUtil {
     private static ObjectMapper objMapper = new ObjectMapper();
@@ -25,5 +29,69 @@ public class JsonUtil {
         objMapper.disable(SerializationFeature.FAIL_ON_EMPTY_BEANS);
         objMapper.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
         objMapper.configure(JsonParser.Feature.IGNORE_UNDEFINED,true);
+    }
+
+    public static <T> byte[] serialize(T obj){
+        byte[] bytes=new byte[0];
+        try {
+            bytes = objMapper.writeValueAsBytes(obj);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException(e.getMessage(), e);
+        }
+        return bytes;
+    }
+
+    public static <T> T deserialize(byte[] data, Class<T> cls) {
+        T obj = null;
+        try {
+            obj = objMapper.readValue(data, cls);
+        } catch (IOException e) {
+            throw new IllegalStateException(e.getMessage(), e);
+        }
+        return obj;
+    }
+
+    public static <type> type jsonToObject(String json,Class<?> cls){
+        type obj=null;
+        JavaType javaType = objMapper.getTypeFactory().constructType(cls);
+        try {
+            obj = objMapper.readValue(json, javaType);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException(e.getMessage(), e);
+        }
+        return obj;
+    }
+
+    public static <type> type jsonToObjectList(String json,Class<?> collectionClass,Class<?>... elementClass){
+        type obj=null;
+        JavaType javaType = objMapper.getTypeFactory().constructParametricType(collectionClass, elementClass);
+        try {
+            objMapper.readValue(json,javaType);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException(e.getMessage(), e);
+        }
+        return obj;
+    }
+
+    public static <type> type jsonToObjectHashMap(String json,
+                                                  Class<?> keyClass, Class<?> valueClass) {
+        type obj = null;
+        JavaType javaType = objMapper.getTypeFactory().constructParametricType(HashMap.class, keyClass, valueClass);
+        try {
+            obj = objMapper.readValue(json, javaType);
+        } catch (IOException e) {
+            throw new IllegalStateException(e.getMessage(), e);
+        }
+        return obj;
+    }
+
+    public static String objectToJson(Object o){
+        String json="";
+        try {
+            json=objMapper.writeValueAsString(o);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException(e.getMessage(), e);
+        }
+        return json;
     }
 }

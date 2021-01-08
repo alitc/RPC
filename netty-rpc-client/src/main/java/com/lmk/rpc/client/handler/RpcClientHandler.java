@@ -1,4 +1,44 @@
 package com.lmk.rpc.client.handler;
 
-public class RpcClientHandler {
+import com.netty.rpc.codec.RpcResponse;
+import com.netty.rpc.protocol.RpcProtocol;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.SimpleChannelInboundHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.net.SocketAddress;
+import java.util.concurrent.ConcurrentHashMap;
+
+public class RpcClientHandler extends SimpleChannelInboundHandler<RpcResponse> {
+    private static final Logger logger = LoggerFactory.getLogger(RpcClientHandler.class);
+
+    private ConcurrentHashMap<String,RpcFuture> pendingRPC=new ConcurrentHashMap<>();
+    private volatile Channel channel;
+    private SocketAddress remotePeer;
+    private RpcProtocol rpcProtocol;
+
+    @Override
+    public void channelRegistered(ChannelHandlerContext ctx) throws Exception {
+        super.channelRegistered(ctx);
+        this.remotePeer=this.channel.remoteAddress();
+    }
+
+    @Override
+    public void channelActive(ChannelHandlerContext ctx) throws Exception {
+        super.channelActive(ctx);
+        this.channel=ctx.channel();
+    }
+
+    @Override
+    protected void channelRead0(ChannelHandlerContext ctx, RpcResponse response) throws Exception {
+        String requestId=response.getRequestId();
+        logger.debug("Receive response: " + requestId);
+        RpcFuture rpcFuture=pendingRPC.get(requestId);
+        if (rpcFuture!=null){
+            pendingRPC.remove(requestId);
+            rpcFuture.done(response);
+        }
+    }
 }
