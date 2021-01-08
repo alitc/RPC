@@ -1,5 +1,6 @@
 package com.lmk.rpc.client.handler;
 
+import com.lmk.rpc.client.RpcClient;
 import com.lmk.rpc.client.connect.ConnectionManager;
 import com.netty.rpc.codec.RpcRequest;
 import com.netty.rpc.codec.RpcResponse;
@@ -110,5 +111,33 @@ public class RpcFuture implements Future<Object> {
     public void done(RpcResponse response){
         this.response=response;
         sync.release(1);
+    }
+
+    private void invokeCallbacks(){
+        lock.lock();
+        for (final AsynRPCCallback callback:pendingCallbacks){
+            run
+        }
+    }
+
+    public RpcFuture addCallBack(AsynRPCCallback callback){
+        lock.lock();
+        if (isDone()){
+            run
+        }
+    }
+
+    private void runCallback(final AsynRPCCallback callback){
+        final RpcResponse response=this.response;
+        RpcClient.submit(new Runnable(){
+            @Override
+            public void run() {
+                if (!response.isError()){
+                    callback.success(response.getResult());
+                }else {
+                    callback.fail(new RuntimeException("Response error", new Throwable(response.getError())));
+                }
+            }
+        })
     }
 }

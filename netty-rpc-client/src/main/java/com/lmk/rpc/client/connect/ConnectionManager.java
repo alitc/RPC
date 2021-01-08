@@ -1,14 +1,22 @@
 package com.lmk.rpc.client.connect;
 
+import com.lmk.rpc.client.RpcClient;
 import com.lmk.rpc.client.handler.RpcClientHandler;
+import com.lmk.rpc.client.handler.RpcClientInitializer;
 import com.lmk.rpc.client.route.RpcLoadBalance;
 import com.lmk.rpc.client.route.RpcLoadBalanceRoundRobin;
 import com.netty.rpc.protocol.RpcProtocol;
+import com.netty.rpc.protocol.RpcServiceInfo;
+import io.netty.bootstrap.Bootstrap;
+import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.nio.NioSocketChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.net.InetSocketAddress;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -26,7 +34,7 @@ public class ConnectionManager {
     private CopyOnWriteArraySet<RpcProtocol> rpcProtocolSet=new CopyOnWriteArraySet<>();
     private ReentrantLock lock=new ReentrantLock();
     private Condition connected=lock.newCondition();
-    private long waitTimeOut=5000;
+    private long waitTimeout=5000;
     private RpcLoadBalance loadBalance=new RpcLoadBalanceRoundRobin();
     private volatile boolean isRunning=true;
 
@@ -56,7 +64,7 @@ public class ConnectionManager {
             //Add new server info
             for (final RpcProtocol rpcProtocol:serviceSet){
                 if (!rpcProtocolSet.contains(rpcProtocol)){
-                    //connectServerNode(rpcProtocol);
+                    connectServerNode(rpcProtocol);
                 }
             }
 
@@ -66,9 +74,94 @@ public class ConnectionManager {
                     logger.info("Remove invalid service: " + rpcProtocol.toJson());
                     RpcClientHandler handler=connectedServerNodes.get(rpcProtocol);
                     if (handler!=null){
+                        handler.close();
                     }
+                    connectedServerNodes.remove(rpcProtocol);
+                    rpcProtocolSet.remove(rpcProtocol);
                 }
             }
+        }else {
+            // No available service
+            logger.error("No available service!");
+            for (RpcProtocol rpcProtocol : rpcProtocolSet) {
+                RpcClientHandler handler=connectedServerNodes.get(rpcProtocol);
+                if (handler != null) {
+                    handler.close();
+                }
+                connectedServerNodes.remove(rpcProtocol);
+                rpcProtocolSet.remove(rpcProtocol);
+            }
         }
+    }
+
+    private void connectServerNode(RpcProtocol rpcProtocol){
+        if (rpcProtocol.getServiceInfoList()==null||rpcProtocol.getServiceInfoList().isEmpty()){
+            logger.info("No service on node, host: {}, port: {}", rpcProtocol.getHost(), rpcProtocol.getPort());
+            return;
+        }
+        rpcProtocolSet.add(rpcProtocol);
+        logger.info("New service node, host: {}, port: {}", rpcProtocol.getHost(), rpcProtocol.getPort());
+        for (RpcServiceInfo serviceProtocol : rpcProtocol.getServiceInfoList()) {
+            logger.info("New service info, name: {}, version: {}", serviceProtocol.getServiceName(), serviceProtocol.getVersion());
+        }
+        final InetSocketAddress remotePeer=new InetSocketAddress(rpcProtocol.getHost(),rpcProtocol.getPort());
+        threadPoolExecutor.submit(new Runnable() {
+            @Override
+            public void run() {
+                Bootstrap b=new Bootstrap();
+                b.group(eventLoopGroup)
+                        .channel(NioSocketChannel.class)
+                        .handler(new RpcClientInitializer());
+
+                ChannelFuture channelFuture=b.connect(remotePeer);
+                channelFuture.addListener(new ChannelFutureListener() {
+                    @Override
+                    public void operationComplete(ChannelFuture future) throws Exception {
+                        if (channelFuture.isSuccess()) {
+                            logger.info("Successfully connect to remote server, remote peer = " + remotePeer);
+                            RpcClientHandler handler=channelFuture.channel().pipeline().get(RpcClientHandler.class);
+                            connectedServerNodes.put(rpcProtocol,handler);
+                            handler.setRpcProtocol(rpcProtocol);
+                            signalAvailableHandler();
+                        }else {
+                            logger.error("Can not connect to remote server, remote peer = " + remotePeer);
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    private void signalAvailableHandler(){
+        lock.lock();
+        try {
+            connected.signalAll();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private boolean waitingForHandler() throws InterruptedException{
+        lock.lock();
+        try {
+            logger.warn("Waiting for available service");
+            return connected.await(this.waitTimeout, TimeUnit.MILLISECONDS);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public RpcClientHandler chooseHandler(String serviceKey) throws Exception{
+        int size=connectedServerNodes.values().size();
+        while(isRunning&&size<=0){
+            try {
+                waitingForHandler();
+                size=connectedServerNodes.values().size();
+            }catch (InterruptedException e){
+                logger.error("Waiting for available service is interrupted!", e);
+            }
+        }
+        //RpcProtocol rpcProtocol=loadBalance.
+        return null;
     }
 }

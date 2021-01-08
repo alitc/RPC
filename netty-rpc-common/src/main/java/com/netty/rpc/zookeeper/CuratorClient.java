@@ -1,7 +1,6 @@
 package com.netty.rpc.zookeeper;
 
 import com.netty.rpc.config.Constant;
-import javafx.scene.control.CheckBoxTreeItemBuilder;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
 import org.apache.curator.framework.recipes.cache.PathChildrenCache;
