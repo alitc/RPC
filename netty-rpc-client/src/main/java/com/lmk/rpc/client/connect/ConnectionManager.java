@@ -161,7 +161,33 @@ public class ConnectionManager {
                 logger.error("Waiting for available service is interrupted!", e);
             }
         }
-        //RpcProtocol rpcProtocol=loadBalance.
-        return null;
+        RpcProtocol rpcProtocol=loadBalance.route(serviceKey,connectedServerNodes);
+        RpcClientHandler handler=connectedServerNodes.get(rpcProtocol);
+        if (handler!=null){
+            return handler;
+        }else {
+            throw new Exception("Can not get available connection");
+        }
+    }
+
+    public void removeHandler(RpcProtocol rpcProtocol){
+        rpcProtocolSet.remove(rpcProtocol);
+        connectedServerNodes.remove(rpcProtocol);
+        logger.info("Remove one connection, host: {}, port: {}", rpcProtocol.getHost(), rpcProtocol.getPort());
+    }
+
+    public void stop(){
+        isRunning=false;
+        for (RpcProtocol rpcProtocol:rpcProtocolSet){
+            RpcClientHandler handler=connectedServerNodes.get(rpcProtocol);
+            if (handler!=null){
+                handler.close();
+            }
+            connectedServerNodes.remove(rpcProtocol);
+            rpcProtocolSet.remove(rpcProtocol);
+        }
+        signalAvailableHandler();
+        threadPoolExecutor.shutdown();
+        eventLoopGroup.shutdownGracefully();
     }
 }

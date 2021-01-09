@@ -1,4 +1,9 @@
 package com.lmk.rpc.client.proxy;
-
-public class RpcFuntion {
+/**
+ * lambda method reference
+ * g-yu
+ */
+@FunctionalInterface
+public interface RpcFuntion<T,P> extends SerializableFunction<T> {
+    Object apply(T t,P p);
 }

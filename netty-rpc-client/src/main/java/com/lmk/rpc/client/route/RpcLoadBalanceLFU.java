@@ -1,4 +1,77 @@
 package com.lmk.rpc.client.route;
 
-public class RpcLoadBalanceLFU {
+import com.lmk.rpc.client.handler.RpcClientHandler;
+import com.netty.rpc.protocol.RpcProtocol;
+
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+
+/**
+ * LFU load balance
+ */
+public class RpcLoadBalanceLFU extends RpcLoadBalance{
+    private ConcurrentMap<String, HashMap<RpcProtocol,Integer>> jonLfuMap=new ConcurrentHashMap<>();
+    private long CACHE_VALID_TIME=0;
+
+    public RpcProtocol doRoute(String serviceKey, List<RpcProtocol> addressList) {
+        // cache clear
+        if (System.currentTimeMillis()>CACHE_VALID_TIME){
+            jonLfuMap.clear();
+            CACHE_VALID_TIME=System.currentTimeMillis()+1000*60*60*24;
+        }
+
+        //LFU item init
+        HashMap<RpcProtocol,Integer> lfuItemMap=jonLfuMap.get(serviceKey);
+        if (lfuItemMap==null){
+            lfuItemMap=new HashMap<RpcProtocol,Integer>();
+            jonLfuMap.putIfAbsent(serviceKey,lfuItemMap);
+        }
+
+        //put new
+        for (RpcProtocol address:addressList){
+            if (!lfuItemMap.containsKey(address)||lfuItemMap.get(address)>1000000){
+                lfuItemMap.put(address,0);
+            }
+        }
+
+        //remove old
+        List<RpcProtocol> delKeys=new ArrayList<>();
+        for (RpcProtocol existKey:lfuItemMap.keySet()){
+            if (!addressList.contains(existKey)){
+                delKeys.add(existKey);
+            }
+        }
+        if (delKeys.size()>0){
+            for (RpcProtocol delKey:delKeys){
+                lfuItemMap.remove(delKey);
+            }
+        }
+
+        //load least used count address
+        List<Map.Entry<RpcProtocol,Integer>> lfuItemList=new ArrayList<>(lfuItemMap.entrySet());
+        Collections.sort(lfuItemList, new Comparator<Map.Entry<RpcProtocol, Integer>>() {
+            @Override
+            public int compare(Map.Entry<RpcProtocol, Integer> o1, Map.Entry<RpcProtocol, Integer> o2) {
+                return o1.getValue().compareTo(o2.getValue());
+            }
+        });
+
+        Map.Entry<RpcProtocol,Integer> addressItem=lfuItemList.get(0);
+        RpcProtocol minAddress=addressItem.getKey();
+        addressItem.setValue(addressItem.getValue()+1);
+
+        return minAddress;
+    }
+
+    @Override
+    public RpcProtocol route(String serviceKey, Map<RpcProtocol, RpcClientHandler> connectedServerNodes) throws Exception {
+        Map<String ,List<RpcProtocol>> serviceMap= getServiceMap(connectedServerNodes);
+        List<RpcProtocol> addressList=serviceMap.get(serviceKey);
+        if (addressList!=null&&addressList.size()>0){
+            return doRoute(serviceKey,addressList);
+        }else {
+            throw new Exception("Can not find connection for service: " + serviceKey);
+        }
+    }
 }
