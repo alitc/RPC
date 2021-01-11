@@ -12,5 +12,11 @@
     <groupId>com.lmk.lrpc</groupId>
     <artifactId>netty-rpc-server</artifactId>
 
-
+    <dependencies>
+        <dependency>
+            <groupId>com.lmk.lrpc</groupId>
+            <artifactId>netty-rpc-common</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
+    </dependencies>
 </project>
